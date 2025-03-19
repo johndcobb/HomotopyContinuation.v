@@ -1,6 +1,9 @@
 use core::f64;
+use std::env::temp_dir;
 use std::ops::Add;
 use std::ops::Mul;
+use std::ops::Div;
+use std::ops::Sub;
 
 /* -----------------------------------
 Complex Numbers
@@ -33,6 +36,18 @@ impl Add for ComplexNumber {
     }
 }
 
+impl Div for ComplexNumber {
+    type Output = ComplexNumber;
+
+    fn div(self, other: ComplexNumber) -> ComplexNumber {
+        let denominator = other.real.powi(2) + other.imag.powi(2);
+        ComplexNumber {
+            real: (self.real * other.real + self.imag * other.imag) / denominator,
+            imag: (self.imag * other.real - self.real * other.imag) / denominator,
+        }
+    }
+}
+
 impl Mul for ComplexNumber {
     type Output = ComplexNumber;
 
@@ -40,6 +55,17 @@ impl Mul for ComplexNumber {
         ComplexNumber {
             real: self.real * other.real - self.imag * other.imag,
             imag: self.real * other.imag + self.imag * other.real,
+        }
+    }
+}
+
+impl Sub for ComplexNumber {
+    type Output = ComplexNumber;
+
+    fn sub(self, other: ComplexNumber) -> ComplexNumber {
+        ComplexNumber {
+            real: self.real - other.real,
+            imag: self.imag - other.imag,
         }
     }
 }
@@ -98,7 +124,7 @@ impl Polynomial {
     }
 
     // This evaluates the polynomial using Horner's method.
-    pub fn evaluate(&self, z: ComplexNumber) -> ComplexNumber {
+    pub fn evaluate(&self, z: &ComplexNumber) -> ComplexNumber {
         let mut result = ComplexNumber::new(0.0, 0.0);
         for c in self.coefficients.iter().rev() {
             result = result * z.clone() + c.clone();
@@ -193,4 +219,37 @@ impl std::fmt::Display for Polynomial {
         }
         Ok(())
     }
+}
+
+/* -----------------------------------
+Some functions that operate on Polynomials
+-----------------------------------*/
+
+// This is newtons method done without division, implemented according to [Blanchard, Chamberlin, 2023]
+pub fn newton_corrector(h: Polynomial, point: ComplexNumber, tolerance: f64, initial_inverse_guess: ComplexNumber) -> ComplexNumber {
+    let mut error = h.evaluate(&point).clone();
+    let mut fixed_point = point.clone();
+    let mut inverse_guess = initial_inverse_guess;
+    while error.norm() > tolerance {
+        let current_inverse_guess = inverse_guess.clone();
+
+        // Break down the expression into smaller steps
+        let derivative_at_fixed_point = h.derivative().evaluate(&fixed_point);
+        let correction = ComplexNumber::new(2.0, 0.0) - current_inverse_guess.clone() * derivative_at_fixed_point;
+        inverse_guess = current_inverse_guess * correction;
+
+
+        fixed_point = fixed_point.clone() - h.evaluate(&fixed_point)*inverse_guess.clone();
+        error = h.evaluate(&fixed_point);
+    }
+    fixed_point
+}
+
+pub fn roots_of_unity(n: i32) -> Vec<ComplexNumber> {
+    let mut result = Vec::new();
+    for i in 0..n {
+        let angle = 2.0 * f64::consts::PI * i as f64 / n as f64;
+        result.push(ComplexNumber::new(angle.cos(), angle.sin()));
+    }
+    result
 }
