@@ -1,5 +1,10 @@
+use core::f64;
 use std::ops::Add;
 use std::ops::Mul;
+
+/* -----------------------------------
+Complex Numbers
+-----------------------------------*/
 
 #[derive(Clone)]
 pub struct ComplexNumber {
@@ -46,9 +51,25 @@ impl From<f64> for ComplexNumber {
     }
 }
 
+impl std::fmt::Display for ComplexNumber{
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        if self.imag != 0.0 && self.real != 0.0 {
+            write!(f, "{} + {}i", self.real, self.imag)
+        } else if self.imag == 0.0 {
+            write!(f, "{}", self.real)
+        } else {
+            write!(f, "{}i", self.imag)
+        }
+    }
+} 
+
+/* -----------------------------------
+Polynomials 
+-----------------------------------*/
+
 #[derive(Clone)]
 pub struct Polynomial {
-    pub coefficients: Vec<ComplexNumber>,
+    pub coefficients: Vec<ComplexNumber>, // The coefficients of the polynomial in increasing order.
 }
 
 impl Polynomial {
@@ -56,6 +77,33 @@ impl Polynomial {
         Self {
             coefficients: coeffs.into_iter().map(|c| c.into()).collect(),
         }
+    }
+
+     pub fn derivative(&self) -> Polynomial {
+        Polynomial {
+            coefficients: self
+                .coefficients
+                .iter()
+                .enumerate()
+                .filter_map(
+                    |(i,c)
+                    | if i == 0 {
+                        None
+                    } else {
+                        Some(c.clone() * ComplexNumber::new((i) as f64, 0.0)
+                    )
+                })
+                .collect(),
+        }
+    }
+
+    // This evaluates the polynomial using Horner's method.
+    pub fn evaluate(&self, z: ComplexNumber) -> ComplexNumber {
+        let mut result = ComplexNumber::new(0.0, 0.0);
+        for c in self.coefficients.iter().rev() {
+            result = result * z.clone() + c.clone();
+        }
+        result
     }
 }
 
@@ -138,24 +186,11 @@ impl std::fmt::Display for Polynomial {
                 } else {
                     write!(f, "({} + {}i)", c.real, c.imag)?;
                 }
-                if i < self.coefficients.len() - 1 {
-                    write!(f, "*z^{}", self.coefficients.len() - i - 1)?;
+                if i > 0 {
+                    write!(f, "*z^{}", i)?;
                 }
             }
         }
         Ok(())
     }
 }
-
-
-impl std::fmt::Display for ComplexNumber{
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        if self.imag != 0.0 && self.real != 0.0 {
-            write!(f, "{} + {}i", self.real, self.imag)
-        } else if self.imag == 0.0 {
-            write!(f, "{}", self.real)
-        } else {
-            write!(f, "{}i", self.imag)
-        }
-    }
-} 

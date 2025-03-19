@@ -1,5 +1,5 @@
-use crate::polynomials::Polynomial;
-use crate::polynomials::ComplexNumber;
+use crate::Polynomial;
+use crate::ComplexNumber;
 use rand::Rng;
 
 pub struct Homotopy {
@@ -16,7 +16,7 @@ impl Homotopy {
         Self { start, target, random_unit }
     }
     
-    pub fn time(&self, t: f64) -> Polynomial {
+    pub fn at_time(&self, t: f64) -> Polynomial {
         self.start.clone()*(1.0-t) + self.random_unit.clone()*self.target.clone()*t
     }
 }   
