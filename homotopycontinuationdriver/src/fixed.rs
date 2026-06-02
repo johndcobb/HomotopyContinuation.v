@@ -4,7 +4,7 @@ use std::io::{self, Write};
 use std::ops::{Add, Mul, Sub};
 use std::path::Path;
 
-use crate::{ComplexNumber, Polynomial};
+use crate::{ComplexNumber, Homotopy, Polynomial, TrackConfig, newton_corrector, roots_of_unity};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct FixedQ(i16);
@@ -161,6 +161,16 @@ struct CoreVector {
     newton_inverse_guess: FixedComplex,
 }
 
+#[derive(Clone, Debug)]
+struct HomotopyStepVector {
+    index: usize,
+    step: usize,
+    z: FixedComplex,
+    h_coefficients: [FixedComplex; 4],
+    dh_coefficients: [FixedComplex; 4],
+    inverse_guess: FixedComplex,
+}
+
 impl CoreVector {
     fn to_line(&self) -> String {
         let fixed_add = self.fixed_a + self.fixed_b;
@@ -230,6 +240,52 @@ impl CoreVector {
     }
 }
 
+impl HomotopyStepVector {
+    fn to_line(&self) -> String {
+        let h_value = horner_fixed(self.h_coefficients, self.z);
+        let dh_value = horner_fixed(self.dh_coefficients, self.z);
+        let (inverse_next, z_next) =
+            newton_step_fixed(self.z, h_value, dh_value, self.inverse_guess);
+
+        let values = [
+            self.index as i16,
+            self.step as i16,
+            self.z.real.raw(),
+            self.z.imag.raw(),
+            self.h_coefficients[0].real.raw(),
+            self.h_coefficients[0].imag.raw(),
+            self.h_coefficients[1].real.raw(),
+            self.h_coefficients[1].imag.raw(),
+            self.h_coefficients[2].real.raw(),
+            self.h_coefficients[2].imag.raw(),
+            self.h_coefficients[3].real.raw(),
+            self.h_coefficients[3].imag.raw(),
+            self.dh_coefficients[0].real.raw(),
+            self.dh_coefficients[0].imag.raw(),
+            self.dh_coefficients[1].real.raw(),
+            self.dh_coefficients[1].imag.raw(),
+            self.dh_coefficients[2].real.raw(),
+            self.dh_coefficients[2].imag.raw(),
+            self.inverse_guess.real.raw(),
+            self.inverse_guess.imag.raw(),
+            h_value.real.raw(),
+            h_value.imag.raw(),
+            dh_value.real.raw(),
+            dh_value.imag.raw(),
+            inverse_next.real.raw(),
+            inverse_next.imag.raw(),
+            z_next.real.raw(),
+            z_next.imag.raw(),
+        ];
+
+        values
+            .iter()
+            .map(i16::to_string)
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+}
+
 pub fn write_core_vectors(path: impl AsRef<Path>) -> io::Result<()> {
     let path = path.as_ref();
     if let Some(parent) = path.parent() {
@@ -238,6 +294,19 @@ pub fn write_core_vectors(path: impl AsRef<Path>) -> io::Result<()> {
 
     let mut file = fs::File::create(path)?;
     for vector in core_vectors() {
+        writeln!(file, "{}", vector.to_line())?;
+    }
+    Ok(())
+}
+
+pub fn write_homotopy_step_vectors(path: impl AsRef<Path>) -> io::Result<()> {
+    let path = path.as_ref();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    let mut file = fs::File::create(path)?;
+    for vector in homotopy_step_vectors() {
         writeln!(file, "{}", vector.to_line())?;
     }
     Ok(())
@@ -310,6 +379,40 @@ fn core_vectors() -> Vec<CoreVector> {
     ]
 }
 
+fn homotopy_step_vectors() -> Vec<HomotopyStepVector> {
+    let target = Polynomial::new(vec![1.0, 2.0, 3.0, 4.0]);
+    let start = Polynomial::start_system(3).expect("valid cubic start system");
+    let homotopy = Homotopy::new(start, target);
+    let config = TrackConfig::default();
+    let mut point = roots_of_unity(3)[0];
+    let mut vectors = Vec::new();
+
+    for step in 1..=8 {
+        let time = step as f64 / config.steps as f64;
+        let h = homotopy.at_time(time);
+        let dh = h.derivative();
+        let derivative_at_point = dh.evaluate(point);
+        let inverse_guess = derivative_at_point
+            .reciprocal()
+            .expect("demo vector should avoid singular derivative");
+
+        vectors.push(HomotopyStepVector {
+            index: vectors.len(),
+            step,
+            z: FixedComplex::from_complex(point),
+            h_coefficients: fixed_coefficients(&h),
+            dh_coefficients: fixed_coefficients(&dh),
+            inverse_guess: FixedComplex::from_complex(inverse_guess),
+        });
+
+        point = newton_corrector(&h, point, config.tolerance, config.max_newton_iterations)
+            .expect("demo path should converge")
+            .point;
+    }
+
+    vectors
+}
+
 fn fixed_coefficients(polynomial: &Polynomial) -> [FixedComplex; 4] {
     let mut coefficients = [FixedComplex::ZERO; 4];
     for (index, coefficient) in polynomial.coefficients.iter().take(4).copied().enumerate() {
@@ -371,6 +474,15 @@ mod tests {
     fn vector_lines_have_expected_field_count() {
         for vector in core_vectors() {
             assert_eq!(vector.to_line().split_whitespace().count(), 40);
+        }
+    }
+
+    #[test]
+    fn homotopy_step_vector_lines_have_expected_field_count() {
+        let vectors = homotopy_step_vectors();
+        assert_eq!(vectors.len(), 8);
+        for vector in vectors {
+            assert_eq!(vector.to_line().split_whitespace().count(), 28);
         }
     }
 }

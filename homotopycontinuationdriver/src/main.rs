@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use homotopycontinuationdriver::{
     Polynomial, TrackConfig, TrackedRoot, factor_polynomial, write_core_vectors,
+    write_homotopy_step_vectors,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -37,12 +38,13 @@ fn factor_command(args: &[String]) -> Result<(), Box<dyn Error>> {
 }
 
 fn vectors_command(args: &[String]) -> Result<(), Box<dyn Error>> {
-    let mut output = default_vector_path();
-    let mut index = 0;
-
-    if args.get(index).map(String::as_str) == Some("cubic_demo") {
-        index += 1;
+    let kind = args.first().map(String::as_str).unwrap_or("cubic_demo");
+    if kind != "cubic_demo" && kind != "homotopy_step" {
+        return Err(format!("unknown vector kind: {kind}").into());
     }
+
+    let mut output = default_vector_path(kind)?;
+    let mut index = 1;
 
     while index < args.len() {
         match args[index].as_str() {
@@ -55,7 +57,11 @@ fn vectors_command(args: &[String]) -> Result<(), Box<dyn Error>> {
         index += 1;
     }
 
-    write_core_vectors(&output)?;
+    match kind {
+        "cubic_demo" => write_core_vectors(&output)?,
+        "homotopy_step" => write_homotopy_step_vectors(&output)?,
+        _ => unreachable!("validated vector kind"),
+    }
     println!("wrote {}", output.display());
     Ok(())
 }
@@ -73,12 +79,17 @@ fn print_roots(roots: &[TrackedRoot]) {
     }
 }
 
-fn default_vector_path() -> PathBuf {
-    let repo_relative = Path::new("Verilog/sim/vectors/homotopy_core_vectors.mem");
+fn default_vector_path(kind: &str) -> Result<PathBuf, Box<dyn Error>> {
+    let filename = match kind {
+        "cubic_demo" => "homotopy_core_vectors.mem",
+        "homotopy_step" => "homotopy_step_vectors.mem",
+        _ => return Err(format!("unknown vector kind: {kind}").into()),
+    };
+    let repo_relative = Path::new("Verilog/sim/vectors").join(filename);
     if Path::new("Verilog/source").exists() {
-        repo_relative.to_path_buf()
+        Ok(repo_relative)
     } else {
-        PathBuf::from("../Verilog/sim/vectors/homotopy_core_vectors.mem")
+        Ok(Path::new("../Verilog/sim/vectors").join(filename))
     }
 }
 
@@ -86,6 +97,7 @@ fn print_usage() {
     println!("Usage:");
     println!("  cargo run -- factor <c0> <c1> ... <cd>");
     println!("  cargo run -- vectors cubic_demo [--output <path>]");
+    println!("  cargo run -- vectors homotopy_step [--output <path>]");
     println!();
     println!("Coefficients are in increasing degree order: c0 + c1*z + ... + cd*z^d.");
 }

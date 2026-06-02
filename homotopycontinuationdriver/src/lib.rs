@@ -3,7 +3,7 @@ pub mod homotopy;
 pub mod pathtracking;
 pub mod polynomials;
 
-pub use fixed::{FixedComplex, FixedQ, write_core_vectors};
+pub use fixed::{FixedComplex, FixedQ, write_core_vectors, write_homotopy_step_vectors};
 pub use homotopy::Homotopy;
 pub use pathtracking::{PathTracker, TrackConfig, TrackError, TrackedRoot, factor_polynomial};
 pub use polynomials::{

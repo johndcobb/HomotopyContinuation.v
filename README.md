@@ -17,6 +17,7 @@ Useful commands:
 ```sh
 cargo test --manifest-path homotopycontinuationdriver/Cargo.toml
 sh scripts/run_verilator.sh
+sh scripts/run_homotopy_step_verilator.sh
 sh scripts/synth_smoke.sh
 ```
 
