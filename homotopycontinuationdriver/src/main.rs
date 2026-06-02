@@ -1,53 +1,91 @@
-mod polynomials;
-use polynomials::roots_of_unity;
-use polynomials::Polynomial;
-use polynomials::ComplexNumber;
-use polynomials::newton_corrector;
+use std::error::Error;
+use std::path::{Path, PathBuf};
 
-mod homotopy;
-use homotopy::Homotopy;
+use homotopycontinuationdriver::{
+    Polynomial, TrackConfig, TrackedRoot, factor_polynomial, write_core_vectors,
+};
 
-mod pathtracking;
-use pathtracking::PathTracker;
-
-fn main() {
-    path_track_example();
+fn main() -> Result<(), Box<dyn Error>> {
+    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    match args.first().map(String::as_str) {
+        None => factor_command(&["1".into(), "2".into(), "3".into(), "4".into()]),
+        Some("factor") => factor_command(&args[1..]),
+        Some("vectors") => vectors_command(&args[1..]),
+        Some("help") | Some("--help") | Some("-h") => {
+            print_usage();
+            Ok(())
+        }
+        Some(command) => Err(format!("unknown command: {command}").into()),
+    }
 }
 
-fn basic_example() {
-    let f = Polynomial::new(vec![1.0, 2.0, 3.0, 4.0]);
-    let g = Polynomial::new(vec![-1.0, 0.0, 0.0, 1.0]);
+fn factor_command(args: &[String]) -> Result<(), Box<dyn Error>> {
+    if args.is_empty() {
+        return Err("provide coefficients in increasing degree order".into());
+    }
 
-    println!("f(z) = {}", &f);
-    println!("g(z) = {}", &g);
+    let coefficients = args
+        .iter()
+        .map(|arg| arg.parse::<f64>())
+        .collect::<Result<Vec<_>, _>>()?;
+    let polynomial = Polynomial::new(coefficients);
+    let roots = factor_polynomial(polynomial.clone(), TrackConfig::default())?;
 
-
-    println!("f(2) = {}", &f.evaluate(&2.0.into()));
-    println!("g(1) = {}", &g.evaluate(&1.0.into()));
-
-    println!("f'(z) = {}", &f.derivative());
-
-    let h = Homotopy::new(g,f);
-    println!("h(z,0) = {}", &h.at_time(0.0));
-    println!("h(z,0.5) = {}", &h.at_time(0.5));
-    println!("h(z,1) = {}", &h.at_time(1.0));
+    println!("f(z) = {polynomial}");
+    print_roots(&roots);
+    Ok(())
 }
 
-fn path_track_example() {
-    let f = Polynomial::new(vec![1.0, 2.0, 3.0, 4.0]);
-    let g = Polynomial::new(vec![-1.0, 0.0, 0.0, 1.0]);
-    let h = Homotopy::new(g,f);
-    let start_points = roots_of_unity(3);
-    let tolerance = 0.01;
-    let mut path_tracker = PathTracker::new(h, start_points.clone(), 10, tolerance);
+fn vectors_command(args: &[String]) -> Result<(), Box<dyn Error>> {
+    let mut output = default_vector_path();
+    let mut index = 0;
 
+    if args.get(index).map(String::as_str) == Some("cubic_demo") {
+        index += 1;
+    }
 
-    let f1 = path_tracker.homotopy_at_step(1);
-    let point = &start_points[0];
-    let y_0 = ComplexNumber::new(1.0, 0.0) / f1.derivative().evaluate(&point);
-    println!("f1(z) = {}", &f1);
-    println!("point = {}", &point);
-    println!("y_0 = {}", &y_0);
-    let next_point = newton_corrector(f1, point.clone(), tolerance, y_0);
-    println!("next_point = {}", &next_point);
+    while index < args.len() {
+        match args[index].as_str() {
+            "--output" | "-o" => {
+                index += 1;
+                output = PathBuf::from(args.get(index).ok_or("--output requires a path argument")?);
+            }
+            other => return Err(format!("unknown vectors argument: {other}").into()),
+        }
+        index += 1;
+    }
+
+    write_core_vectors(&output)?;
+    println!("wrote {}", output.display());
+    Ok(())
+}
+
+fn print_roots(roots: &[TrackedRoot]) {
+    for root in roots {
+        println!(
+            "path {}: start {} -> root {} | residual {:.3e} | Newton iterations {}",
+            root.path_index,
+            root.start_point,
+            root.root,
+            root.residual,
+            root.total_newton_iterations
+        );
+    }
+}
+
+fn default_vector_path() -> PathBuf {
+    let repo_relative = Path::new("Verilog/sim/vectors/homotopy_core_vectors.mem");
+    if Path::new("Verilog/source").exists() {
+        repo_relative.to_path_buf()
+    } else {
+        PathBuf::from("../Verilog/sim/vectors/homotopy_core_vectors.mem")
+    }
+}
+
+fn print_usage() {
+    println!("Usage:");
+    println!("  cargo run -- factor <c0> <c1> ... <cd>");
+    println!("  cargo run -- vectors cubic_demo [--output <path>]");
+    println!();
+    println!("Coefficients are in increasing degree order: c0 + c1*z + ... + cd*z^d.");
 }
